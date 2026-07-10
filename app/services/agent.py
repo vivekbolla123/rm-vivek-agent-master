@@ -43,9 +43,20 @@ class MCPManager:
 mcp_manager = MCPManager()
 
 async def run_agent(message: str, session_id: str, user_id: Optional[str] = None, rm_token: Optional[str] = None) -> AsyncGenerator[str, None]:
-    anthropic = AsyncAnthropicBedrock(
-        aws_region=os.getenv("AWS_REGION", "ap-south-1")
-    )
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY")
+    aws_secret_access_key = os.getenv("AWS_SECRET_KEY")
+    aws_region = os.getenv("AWS_REGION", "ap-south-1")
+    
+    if aws_access_key_id and aws_secret_access_key:
+        anthropic = AsyncAnthropicBedrock(
+            aws_region=aws_region,
+            aws_access_key=aws_access_key_id,
+            aws_secret_key=aws_secret_access_key
+        )
+    else:
+        anthropic = AsyncAnthropicBedrock(
+            aws_region=aws_region
+        )
     
     # Request-scoped MCP session (only initialized if a tool is called)
     mcp_ctx = None

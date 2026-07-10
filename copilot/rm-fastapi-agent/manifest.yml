@@ -28,41 +28,41 @@ count: 1
 exec: true
 platform: linux/x86_64
 
-sidecars:
-  datadog-agent:
-    image: public.ecr.aws/datadog/agent:latest
-    essential: false
-    variables:
-      ECS_FARGATE: "true"
-      DD_SITE: "datadoghq.com"
-      DD_APM_ENABLED: "true"
-      DD_APM_NON_LOCAL_TRAFFIC: "true"
-      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
-      DD_SYSTEM_PROBE_ENABLED: "false"
-      DD_SECURITY_AGENT_ENABLED: "false"
-      DD_PROCESS_AGENT_PROCESS_COLLECTION_ENABLED: "true"
-      DD_HEALTH_PORT: "5555"
-      DD_TAGS: "env:${COPILOT_ENVIRONMENT_NAME},service:rm-fastapi-agent,git.commit.sha:${GIT_COMMIT_SHA},git.ref:${GIT_REF},Department:RM"
-    secrets:
-      DD_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DD_API_KEY
-    cpu: 256
-    memory: 512
-    port: 8126
-
-logging:
-  image: amazon/aws-for-fluent-bit:stable
-  enableMetadata: true
-  destination:
-    Name: datadog
-    Host: http-intake.logs.datadoghq.com
-    dd_service: rm-fastapi-agent
-    dd_source: python
-    dd_message_key: message
-    dd_tags: "env:${COPILOT_ENVIRONMENT_NAME},service:rm-fastapi-agent,git.commit.sha:${GIT_COMMIT_SHA},git.ref:${GIT_REF},Department:RM"
-    TLS: "on"
-    provider: ecs
-  secretOptions:
-    apikey: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DD_API_KEY
+# sidecars:
+#   datadog-agent:
+#     image: public.ecr.aws/datadog/agent:latest
+#     essential: false
+#     variables:
+#       ECS_FARGATE: "true"
+#       DD_SITE: "datadoghq.com"
+#       DD_APM_ENABLED: "true"
+#       DD_APM_NON_LOCAL_TRAFFIC: "true"
+#       DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+#       DD_SYSTEM_PROBE_ENABLED: "false"
+#       DD_SECURITY_AGENT_ENABLED: "false"
+#       DD_PROCESS_AGENT_PROCESS_COLLECTION_ENABLED: "true"
+#       DD_HEALTH_PORT: "5555"
+#       DD_TAGS: "env:${COPILOT_ENVIRONMENT_NAME},service:rm-fastapi-agent,git.commit.sha:${GIT_COMMIT_SHA},git.ref:${GIT_REF},Department:RM"
+#     secrets:
+#       DD_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DD_API_KEY
+#     cpu: 256
+#     memory: 512
+#     port: 8126
+# 
+# logging:
+#   image: amazon/aws-for-fluent-bit:stable
+#   enableMetadata: true
+#   destination:
+#     Name: datadog
+#     Host: http-intake.logs.datadoghq.com
+#     dd_service: rm-fastapi-agent
+#     dd_source: python
+#     dd_message_key: message
+#     dd_tags: "env:${COPILOT_ENVIRONMENT_NAME},service:rm-fastapi-agent,git.commit.sha:${GIT_COMMIT_SHA},git.ref:${GIT_REF},Department:RM"
+#     TLS: "on"
+#     provider: ecs
+#   secretOptions:
+#     apikey: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DD_API_KEY
 
 variables:
   DD_SERVICE: rm-fastapi-agent
@@ -77,6 +77,8 @@ variables:
 
 secrets:
   REDIS_PASSWORD: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/RM_CACHE_PASSWORD
+  AWS_ACCESS_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/RM_WEBSERVICE_AWS_ACCESS_KEY_NEW_PROD
+  AWS_SECRET_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/RM_WEBSERVICE_AWS_SECRET_KEY_NEW_PROD
 
 environments:
   dev:
