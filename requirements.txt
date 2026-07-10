@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+mcp
+anthropic
+boto3
+langchain
+langchain-openai
+mcp
+httpx
+pydantic
+python-dotenv
+redis
