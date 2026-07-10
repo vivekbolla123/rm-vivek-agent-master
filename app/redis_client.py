@@ -2,8 +2,18 @@ import os
 import json
 import redis.asyncio as redis
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+import urllib.parse
 
+redis_host = os.getenv("REDIS_HOST", "")
+redis_port = os.getenv("REDIS_PORT", "6379")
+redis_password = os.getenv("REDIS_PASSWORD", "")
+
+if redis_host:
+    encoded_password = urllib.parse.quote_plus(redis_password) if redis_password else ""
+    auth = f":{encoded_password}@" if encoded_password else ""
+    REDIS_URL = f"redis://{auth}{redis_host}:{redis_port}"
+else:
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 redis_client = None
 
 async def init_redis():

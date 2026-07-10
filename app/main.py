@@ -9,7 +9,13 @@ async def lifespan(app: FastAPI):
     yield
     await close_redis()
 
-app = FastAPI(title="RM Agent Bot", description="FastAPI wrapper for RM Agent", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="RM Agent Bot", 
+    description="FastAPI wrapper for RM Agent", 
+    version="1.0.0", 
+    lifespan=lifespan,
+    root_path="/api/rm-fastapi-agent"
+)
 
 app.include_router(chat.router, prefix="/v1/agent", tags=["agent"])
 
