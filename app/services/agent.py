@@ -196,8 +196,7 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                                 "tool_use_id": tool_id,
                                 "content": tool_text
                             }
-                            if instr.get("action") != "data_fetched":
-                                res["_instruction_yield"] = instr
+                            res["_instruction_yield"] = instr
                             return res
                     except:
                         pass
@@ -221,7 +220,8 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                     if "_instruction_yield" in res:
                         instr_yield = res.pop("_instruction_yield")
                         yield f"event: metadata\ndata: {json.dumps({'messages': [instr_yield]})}\n\n"
-                        early_exit = True
+                        if instr_yield.get("action") != "data_fetched":
+                            early_exit = True
                 
                 messages.append({
                     "role": "user",
