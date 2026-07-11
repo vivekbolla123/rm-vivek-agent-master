@@ -36,7 +36,7 @@ class MCPManager:
                         "input_schema": t.inputSchema
                     })
                 
-                prompt_res = await self.session.get_prompt("aria_system_prompt")
+                prompt_res = await self.session.get_prompt("rm_assistant_system_prompt")
                 self.system_prompt = prompt_res.messages[0].content.text
             return self.anthropic_tools, self.system_prompt, self.session
             
