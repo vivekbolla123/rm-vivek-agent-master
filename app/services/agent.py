@@ -12,33 +12,42 @@ class MCPManager:
     def __init__(self):
         self.anthropic_tools = None
         self.system_prompt = None
+        self.session = None
+        self.exit_stack = None
         self._lock = asyncio.Lock()
 
     async def get_cached_data(self):
         async with self._lock:
-            if self.anthropic_tools is None or self.system_prompt is None:
+            if self.session is None:
+                self.exit_stack = contextlib.AsyncExitStack()
                 mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8003/sse")
-                async with sse_client(url=mcp_url) as streams:
-                    async with ClientSession(streams[0], streams[1]) as session:
-                        await session.initialize()
-                        mcp_tools = await session.list_tools()
-                        
-                        self.anthropic_tools = []
-                        for t in mcp_tools.tools:
-                            self.anthropic_tools.append({
-                                "name": t.name,
-                                "description": t.description or "",
-                                "input_schema": t.inputSchema
-                            })
-                        
-                        prompt_res = await session.get_prompt("aria_system_prompt")
-                        self.system_prompt = prompt_res.messages[0].content.text
-            return self.anthropic_tools, self.system_prompt
+                streams = await self.exit_stack.enter_async_context(sse_client(url=mcp_url))
+                self.session = await self.exit_stack.enter_async_context(ClientSession(streams[0], streams[1]))
+                await self.session.initialize()
+                
+            if self.anthropic_tools is None or self.system_prompt is None:
+                mcp_tools = await self.session.list_tools()
+                
+                self.anthropic_tools = []
+                for t in mcp_tools.tools:
+                    self.anthropic_tools.append({
+                        "name": t.name,
+                        "description": t.description or "",
+                        "input_schema": t.inputSchema
+                    })
+                
+                prompt_res = await self.session.get_prompt("aria_system_prompt")
+                self.system_prompt = prompt_res.messages[0].content.text
+            return self.anthropic_tools, self.system_prompt, self.session
             
     async def clear_cache(self):
         async with self._lock:
             self.anthropic_tools = None
             self.system_prompt = None
+            if self.exit_stack:
+                await self.exit_stack.aclose()
+            self.session = None
+            self.exit_stack = None
 
 mcp_manager = MCPManager()
 
@@ -64,10 +73,10 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
     
     try:
         try:
-            anthropic_tools, dynamic_system_prompt = await mcp_manager.get_cached_data()
+            anthropic_tools, dynamic_system_prompt, mcp_session = await mcp_manager.get_cached_data()
         except Exception:
             await mcp_manager.clear_cache()
-            anthropic_tools, dynamic_system_prompt = await mcp_manager.get_cached_data()
+            anthropic_tools, dynamic_system_prompt, mcp_session = await mcp_manager.get_cached_data()
             
         messages = await load_history(session_id)
         
@@ -96,7 +105,7 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                yield f"event: error\ndata: {json.dumps({'detail': f'LLM Error: {str(e)}'})}\n\n"
+                yield {"event": "error", "data": {"detail": f"LLM Error: {str(e)}"}}
                 break
                 
             current_tool_calls = []
@@ -111,7 +120,7 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                     if "<thinking>" in assistant_text and "</thinking>" not in assistant_text:
                         pass
                     elif text_chunk and not ("<thinking" in text_chunk or "</thinking" in text_chunk):
-                        yield f"event: text\ndata: {json.dumps({'text': text_chunk})}\n\n"
+                        yield {"event": "text", "data": {"text": text_chunk}}
                 
                 elif event.type == "content_block_start" and event.content_block.type == "tool_use":
                     current_tool = {"call": event.content_block, "args": ""}
@@ -133,7 +142,7 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                         a2ui_msgs = build_a2ui_messages(parsed)
                         for msg in a2ui_msgs:
                             flat_msg = {**msg, **msg.get("metadata", {})}
-                            yield f"event: metadata\ndata: {json.dumps({'messages': [flat_msg]})}\n\n"
+                            yield {"event": "metadata", "data": {"messages": [flat_msg]}}
                     except Exception as e:
                         pass
 
@@ -154,13 +163,8 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                     "content": assistant_content
                 })
                 
-                # Initialize MCP session lazily if not already open for this request
-                if not mcp_session:
-                    mcp_ctx = contextlib.AsyncExitStack()
-                    mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8003/sse")
-                    streams = await mcp_ctx.enter_async_context(sse_client(url=mcp_url))
-                    mcp_session = await mcp_ctx.enter_async_context(ClientSession(streams[0], streams[1]))
-                    await mcp_session.initialize()
+                # We now use the persistent mcp_session from mcp_manager, no need to initialize it here.
+
                 
                 async def execute_tool(tc):
                     tool_name = tc["call"].name
@@ -208,18 +212,18 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                     }
                 
                 # Emit event: running instead of text
-                yield f"event: running\ndata: {json.dumps({'status': True})}\n\n"
+                yield {"event": "running", "data": {"status": True}}
                 
                 tool_results = await asyncio.gather(*(execute_tool(tc) for tc in current_tool_calls))
                 
                 # Emit false after tools finish
-                yield f"event: running\ndata: {json.dumps({'status': False})}\n\n"
+                yield {"event": "running", "data": {"status": False}}
                 
                 early_exit = False
                 for res in tool_results:
                     if "_instruction_yield" in res:
                         instr_yield = res.pop("_instruction_yield")
-                        yield f"event: metadata\ndata: {json.dumps({'messages': [instr_yield]})}\n\n"
+                        yield {"event": "metadata", "data": {"messages": [instr_yield]}}
                         if instr_yield.get("action") != "data_fetched":
                             early_exit = True
                 
@@ -243,7 +247,7 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                         a2ui_msgs = build_a2ui_messages(parsed)
                         for msg in a2ui_msgs:
                             flat_msg = {**msg, **msg.get("metadata", {})}
-                            yield f"event: metadata\ndata: {json.dumps({'messages': [flat_msg]})}\n\n"
+                            yield {"event": "metadata", "data": {"messages": [flat_msg]}}
                     except Exception as e:
                         pass
                         
@@ -264,7 +268,4 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
         err_msg = str(e)
         if hasattr(e, 'exceptions') and len(e.exceptions) > 0:
             err_msg = f"{type(e.exceptions[0]).__name__}: {str(e.exceptions[0])}"
-        yield f"event: error\ndata: {json.dumps({'detail': f'Agent error: {err_msg}'})}\n\n"
-    finally:
-        if mcp_ctx:
-            await mcp_ctx.aclose()
+        yield {"event": "error", "data": {"detail": f"Agent error: {err_msg}"}}
