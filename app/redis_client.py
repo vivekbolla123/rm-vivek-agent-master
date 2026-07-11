@@ -40,6 +40,14 @@ async def save_history(session_id: str, messages: list):
     """Save conversation history to Redis with a 24-hour expiration."""
     key = f"chat_history:{session_id}"
     
+    # Clean up trailing unfulfilled tool uses (e.g. from cancelled requests)
+    if messages and messages[-1].get("role") == "assistant":
+        content = messages[-1].get("content", [])
+        if isinstance(content, list):
+            has_tool_use = any(isinstance(c, dict) and c.get("type") == "tool_use" for c in content)
+            if has_tool_use:
+                messages.pop()
+    
     # Prune history to keep approximately the last 8 messages
     if len(messages) > 8:
         pruned = messages[-8:]
