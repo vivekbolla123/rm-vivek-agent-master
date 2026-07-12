@@ -19,11 +19,23 @@ class MCPManager:
     async def get_cached_data(self):
         async with self._lock:
             if self.session is None:
-                self.exit_stack = contextlib.AsyncExitStack()
                 mcp_url = os.getenv("MCP_SERVER_URL", "http://localhost:8003/sse")
-                streams = await self.exit_stack.enter_async_context(sse_client(url=mcp_url))
-                self.session = await self.exit_stack.enter_async_context(ClientSession(streams[0], streams[1]))
-                await self.session.initialize()
+                max_retries = 3
+                retry_delay = 1
+                for attempt in range(max_retries):
+                    try:
+                        self.exit_stack = contextlib.AsyncExitStack()
+                        streams = await self.exit_stack.enter_async_context(sse_client(url=mcp_url))
+                        self.session = await self.exit_stack.enter_async_context(ClientSession(streams[0], streams[1]))
+                        await self.session.initialize()
+                        break
+                    except Exception as e:
+                        if self.exit_stack:
+                            await self.exit_stack.aclose()
+                        if attempt == max_retries - 1:
+                            raise Exception(f"Failed to connect to MCP server after {max_retries} attempts: {str(e)}")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
                 
             if self.anthropic_tools is None or self.system_prompt is None:
                 mcp_tools = await self.session.list_tools()
@@ -51,21 +63,9 @@ class MCPManager:
 
 mcp_manager = MCPManager()
 
-async def run_agent(message: str, session_id: str, user_id: Optional[str] = None, rm_token: Optional[str] = None) -> AsyncGenerator[str, None]:
-    aws_access_key_id = os.getenv("AWS_ACCESS_KEY")
-    aws_secret_access_key = os.getenv("AWS_SECRET_KEY")
-    aws_region = os.getenv("AWS_REGION", "ap-south-1")
-    
-    if aws_access_key_id and aws_secret_access_key:
-        anthropic = AsyncAnthropicBedrock(
-            aws_region=aws_region,
-            aws_access_key=aws_access_key_id,
-            aws_secret_key=aws_secret_access_key
-        )
-    else:
-        anthropic = AsyncAnthropicBedrock(
-            aws_region=aws_region
-        )
+async def run_agent(message: str, session_id: str, user_id: Optional[str] = None, rm_token: Optional[str] = None, anthropic: AsyncAnthropicBedrock = None) -> AsyncGenerator[str, None]:
+    if anthropic is None:
+        raise ValueError("Anthropic Bedrock client must be provided")
     
     # Request-scoped MCP session (only initialized if a tool is called)
     mcp_ctx = None
@@ -184,12 +184,19 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                         result = await mcp_session.call_tool(tool_name, parsed_args)
                         tool_text = result.content[0].text if result.content else ""
                     except Exception as e:
-                        return {
-                            "type": "tool_result",
-                            "tool_use_id": tool_id,
-                            "content": f"Error executing tool: {str(e)}",
-                            "is_error": True
-                        }
+                        try:
+                            # Attempt reconnection and retry
+                            await mcp_manager.clear_cache()
+                            _, _, new_mcp_session = await mcp_manager.get_cached_data()
+                            result = await new_mcp_session.call_tool(tool_name, parsed_args)
+                            tool_text = result.content[0].text if result.content else ""
+                        except Exception as retry_e:
+                            return {
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": f"Error executing tool (and retry failed): {str(retry_e)}",
+                                "is_error": True
+                            }
 
                     try:
                         parsed_result = json.loads(tool_text)

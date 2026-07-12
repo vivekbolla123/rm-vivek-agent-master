@@ -2,12 +2,15 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.routers import chat
 from app.redis_client import init_redis, close_redis
+from app.bedrock_client import init_bedrock, close_bedrock
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_redis()
+    init_bedrock()
     yield
     await close_redis()
+    await close_bedrock()
 
 app = FastAPI(
     title="RM Agent Bot", 
