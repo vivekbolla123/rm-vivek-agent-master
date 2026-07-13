@@ -69,8 +69,12 @@ def build_a2ui_messages(parsed_response: ParsedResponse) -> list[dict]:
         ui_schema["theme"] = "success"
         ui_schema["components"] = [
             {"type": "heading", "content": "✅ Success"},
-            {"type": "pre", "content": parsed_response.text}
+            {"type": "markdown", "content": parsed_response.text}
         ]
+        if parsed_response.stage_id:
+            ui_schema["actions"] = [
+                {"label": "View Records", "style": "primary", "actionType": "show_preview", "payload": parsed_response.stage_id}
+            ]
         
     elif parsed_response.type == MessageType.CLARIFICATION:
         ui_schema["theme"] = "clarification"

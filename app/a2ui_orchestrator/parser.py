@@ -37,6 +37,7 @@ def _fallback_parse(raw_text: str, stage_id: str) -> ParsedResponse:
         )
     elif "validation failed" in text_lower or "errors found" in text_lower:
         return ParsedResponse(type=MessageType.VALIDATION_ERROR, text=clean_text, stage_id=stage_id)
+
     elif "error" in text_lower and ("not supported" in text_lower or "rejected" in text_lower):
         return ParsedResponse(type=MessageType.ERROR, text=clean_text, stage_id=stage_id)
     elif "?" in clean_text and any(kw in text_lower for kw in ["which", "what", "please specify", "could you", "missing"]):
