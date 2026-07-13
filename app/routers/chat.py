@@ -30,6 +30,7 @@ async def chat_endpoint(request: ChatRequest, bedrock_client: AsyncAnthropicBedr
                 event = data_dict.get("event", "message")
                 data = json.dumps(data_dict.get("data", {}))
                 yield f"event: {event}\ndata: {data}\n\n"
+            yield f"event: running\ndata: {json.dumps({'status': False})}\n\n"
         except Exception as e:
             yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
 
@@ -58,6 +59,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, bedrock_client: AsyncAnt
                 anthropic=bedrock_client
             ):
                 await websocket.send_json(data_dict)
+            
+            await websocket.send_json({"event": "running", "data": {"status": False}})
                 
     except WebSocketDisconnect:
         print("Client disconnected")

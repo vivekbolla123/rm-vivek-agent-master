@@ -223,8 +223,6 @@ async def run_agent(message: str, session_id: str, user_id: Optional[str] = None
                 
                 tool_results = await asyncio.gather(*(execute_tool(tc) for tc in current_tool_calls))
                 
-                # Emit false after tools finish
-                yield {"event": "running", "data": {"status": False}}
                 
                 early_exit = False
                 for res in tool_results:
